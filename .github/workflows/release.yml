@@ -1,0 +1,80 @@
+# Triggered when a release/* branch is pushed.
+# Validates version bump, runs full test suite, builds a Docker image (dry-run),
+# and publishes a GitHub Release with auto-generated release notes.
+name: Release
+
+on:
+  push:
+    branches:
+      - "release/*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (e.g. 1.2.0)"
+        required: true
+
+jobs:
+  validate-version:
+    name: Validate VERSION file
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: read
+        run: |
+          VERSION=$(cat VERSION | tr -d '[:space:]')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Releasing version: $VERSION"
+          # Ensure it follows semver
+          if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "ERROR: VERSION file must contain a semver string (got: '$VERSION')"
+            exit 1
+          fi
+
+  test:
+    name: Full test suite
+    runs-on: ubuntu-latest
+    needs: validate-version
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: pytest tests/ --cov=src --cov-fail-under=80 -v
+
+  build-image:
+    name: Build Docker image (dry-run)
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build (no push — real push happens in cd.yml after merge)
+        run: |
+          VERSION=${{ needs.validate-version.outputs.version }}
+          echo "Would build: ghcr.io/${{ github.repository }}:$VERSION"
+          echo "Dockerfile build step would run here"
+
+  publish-release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    needs: [validate-version, build-image]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # needed for release notes
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=${{ needs.validate-version.outputs.version }}
+          gh release create "v$VERSION" \
+            --title "v$VERSION" \
+            --generate-notes \
+            --draft
+          echo "Draft release v$VERSION created — promote to published after merging to main."

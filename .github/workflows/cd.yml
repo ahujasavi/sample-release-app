@@ -1,0 +1,70 @@
+# Runs only on merges to main. Builds + pushes Docker image, tags the commit,
+# then triggers a deploy to staging. A manual approval gate gates prod deploy.
+name: CD — Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build-push:
+    name: Build & push image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image_tag: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version
+        id: ver
+        run: echo "version=$(cat VERSION | tr -d '[:space:]')" >> "$GITHUB_OUTPUT"
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=${{ steps.ver.outputs.version }}
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: build-push
+    environment: staging
+    steps:
+      - name: Deploy
+        run: |
+          echo "Deploying image tag ${{ needs.build-push.outputs.image_tag }} to staging"
+          # Real step: kubectl set image / helm upgrade / etc.
+
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    environment: production   # <- manual approval gate in GitHub Environments settings
+    steps:
+      - name: Deploy
+        run: |
+          echo "Deploying image tag ${{ needs.build-push.outputs.image_tag }} to production"
+          # Real step: kubectl set image / helm upgrade / etc.
