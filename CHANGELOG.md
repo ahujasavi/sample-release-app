@@ -6,6 +6,10 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-06-11
+### Added
+- `GET /inventory/search?q=<term>` endpoint for case-insensitive name search (#1)
+
 ## [0.1.0] - 2026-06-11
 ### Added
 - Initial inventory REST API with CRUD endpoints
