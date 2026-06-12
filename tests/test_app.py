@@ -42,3 +42,28 @@ def test_adjust_qty(client):
 def test_adjust_qty_floor_at_zero(client):
     r = client.post("/inventory/SKU-002/adjust", json={"delta": -9999})
     assert r.json["new_qty"] == 0
+
+
+# INV-42: search endpoint tests
+def test_search_returns_match(client):
+    r = client.get("/inventory/search?q=widget")
+    assert r.status_code == 200
+    assert r.json["count"] == 1
+    assert r.json["results"][0]["name"] == "Widget A"
+
+
+def test_search_case_insensitive(client):
+    r = client.get("/inventory/search?q=GADGET")
+    assert r.status_code == 200
+    assert r.json["count"] == 1
+
+
+def test_search_no_results(client):
+    r = client.get("/inventory/search?q=zzz")
+    assert r.status_code == 200
+    assert r.json["count"] == 0
+
+
+def test_search_missing_q(client):
+    r = client.get("/inventory/search")
+    assert r.status_code == 400
