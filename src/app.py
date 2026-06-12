@@ -21,6 +21,16 @@ def list_inventory():
     return jsonify({"items": list(_inventory.values()), "count": len(_inventory)})
 
 
+@app.get("/inventory/search")
+def search_inventory():
+    """INV-42: search by name substring (case-insensitive)."""
+    q = request.args.get("q", "").lower()
+    if not q:
+        return jsonify({"error": "query param 'q' is required"}), 400
+    results = [item for item in _inventory.values() if q in item["name"].lower()]
+    return jsonify({"results": results, "count": len(results), "query": q})
+
+
 @app.get("/inventory/<sku>")
 def get_item(sku: str):
     item = _inventory.get(sku)
